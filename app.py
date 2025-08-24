@@ -132,8 +132,14 @@ def quebrar_excel_por_linhas(arquivo_entrada, tam_max_linhas=2400000):
     """
     Quebra o arquivo CSV por número de linhas
     """
-    # Ler o arquivo CSV
-    df_lista = pd.read_csv(arquivo_entrada)
+    try:
+        # Tentar ler como CSV primeiro
+        df_lista = pd.read_csv(arquivo_entrada, encoding='utf-8')
+    except UnicodeDecodeError:
+        try:
+            df_lista = pd.read_csv(arquivo_entrada, encoding='latin1')
+        except:
+            df_lista = pd.read_csv(arquivo_entrada, encoding='iso-8859-1')
     
     # Dividir o DataFrame em subconjuntos
     subconjuntos = [df_lista[i:i + tam_max_linhas] for i in range(0, len(df_lista), tam_max_linhas)]
@@ -158,8 +164,14 @@ def quebrar_excel_por_tamanho(arquivo_entrada, max_size_mb=75):
     """
     max_size_bytes = max_size_mb * 1024 * 1024
     
-    # Ler o arquivo CSV
-    df = pd.read_csv(arquivo_entrada)
+    # Ler o arquivo CSV com tratamento de encoding
+    try:
+        df = pd.read_csv(arquivo_entrada, encoding='utf-8')
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv(arquivo_entrada, encoding='latin1')
+        except:
+            df = pd.read_csv(arquivo_entrada, encoding='iso-8859-1')
     
     arquivos_criados = []
     nome_base = os.path.splitext(os.path.basename(arquivo_entrada))[0]
@@ -226,6 +238,11 @@ def processar():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
+        # Log para debug
+        print(f"Arquivo recebido: {filename}")
+        print(f"Tamanho do arquivo: {os.path.getsize(filepath)} bytes")
+        print(f"Ação solicitada: {acao}")
+        
         resultado_arquivos = []
         
         if acao == 'marketing_cloud':
@@ -260,8 +277,10 @@ def processar():
             
             # Limpar arquivos temporários
             for arquivo in resultado_arquivos:
-                os.remove(arquivo)
-            os.remove(filepath)
+                if os.path.exists(arquivo):
+                    os.remove(arquivo)
+            if os.path.exists(filepath):
+                os.remove(filepath)
             
             return send_file(
                 zip_buffer,
@@ -272,8 +291,19 @@ def processar():
         
         # Se temos apenas um arquivo, enviar diretamente
         elif len(resultado_arquivos) == 1:
+            # Ler o arquivo para enviar
+            with open(resultado_arquivos[0], 'rb') as f:
+                file_data = io.BytesIO(f.read())
+            
+            # Limpar arquivos temporários
+            if os.path.exists(resultado_arquivos[0]):
+                os.remove(resultado_arquivos[0])
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            file_data.seek(0)
             return send_file(
-                resultado_arquivos[0],
+                file_data,
                 mimetype='text/csv',
                 as_attachment=True,
                 download_name=os.path.basename(resultado_arquivos[0])
