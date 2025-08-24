@@ -376,8 +376,11 @@
                     body: formData
                 });
 
+                // Verificar o tipo de conteúdo da resposta
+                const contentType = response.headers.get("content-type");
+                
                 if (response.ok) {
-                    // Download do arquivo
+                    // Se a resposta for ok, fazer download do arquivo
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -386,13 +389,16 @@
                     // Define o nome do arquivo baseado no Content-Disposition ou usa um padrão
                     const contentDisposition = response.headers.get('Content-Disposition');
                     let downloadName = 'arquivo_processado.csv';
+                    
                     if (contentDisposition) {
                         const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
                         if (match && match[1]) {
                             downloadName = match[1].replace(/['"]/g, '');
                         }
+                    } else if (action.value === 'marketing_cloud') {
+                        downloadName = selectedFile.name.replace('.csv', '_marketing_cloud.csv').replace('.xlsx', '_marketing_cloud.csv');
                     } else if (action.value === 'quebrar_linhas' || action.value === 'quebrar_tamanho') {
-                        downloadName = 'arquivos_processados.zip';
+                        downloadName = selectedFile.name.replace('.csv', '_processado.zip').replace('.xlsx', '_processado.zip');
                     }
                     
                     a.download = downloadName;
@@ -404,10 +410,27 @@
                     successMessage.textContent = '✅ Arquivo processado com sucesso!';
                     successMessage.style.display = 'block';
                 } else {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Erro ao processar arquivo');
+                    // Se houver erro, tentar ler a mensagem
+                    let errorMsg = 'Erro ao processar arquivo';
+                    
+                    if (contentType && contentType.includes("application/json")) {
+                        try {
+                            const error = await response.json();
+                            errorMsg = error.error || errorMsg;
+                        } catch (e) {
+                            errorMsg = 'Erro ao processar arquivo. Verifique o formato do arquivo.';
+                        }
+                    } else {
+                        // Se não for JSON, tentar ler como texto
+                        const textError = await response.text();
+                        console.error('Erro do servidor:', textError);
+                        errorMsg = 'Erro no servidor. Verifique se o arquivo está no formato correto (CSV).';
+                    }
+                    
+                    throw new Error(errorMsg);
                 }
             } catch (error) {
+                console.error('Erro:', error);
                 errorMessage.textContent = `❌ ${error.message}`;
                 errorMessage.style.display = 'block';
             } finally {
